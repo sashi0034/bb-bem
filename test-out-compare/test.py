@@ -9,7 +9,7 @@ def load_data(filename):
 
 
 # ファイル読み込み
-data1 = load_data("origin.txt")
+data1 = load_data("1.txt")
 data2 = load_data("2.txt")
 
 # 最小の長さで切り揃え

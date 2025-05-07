@@ -11,11 +11,12 @@
 
 #include "bicgstab_naive.h"
 #include "bicgstab_cuda.h"
+#include "bicgstab_cuda_wmma.h"
 
 #if !defined(BB_NO_MAIN)
 int main() {
     bb_result_t result;
-    bb_bem("input.txt", BB_COMPUTE_CUDA, &result); // CUDA で実行
+    bb_bem("input.txt", BB_COMPUTE_CUDA_WMMA, &result); // CUDA で実行
 
     // ----------------------------------------------- fp
     FILE* fp = fopen("out2.data", "w");
@@ -224,11 +225,17 @@ bb_status_t bb_bem(const char* filename, bb_compute_t /* in */ compute, bb_resul
     if (compute == BB_COMPUTE_NAIVE) {
         bicgstab_naive(input->para_batch, result->dim, A, rhs, result->sol, TOR, MAX_STEPS);
     }
-    else {
+    else if (compute == BB_COMPUTE_CUDA) {
         bicgstab_cuda(input->para_batch, result->dim, A, rhs, result->sol, TOR, MAX_STEPS);
     }
+    else if (compute == BB_COMPUTE_CUDA_WMMA) {
+        bicgstab_cuda_wmma(input->para_batch, result->dim, A, rhs, result->sol, TOR, MAX_STEPS);
+    }
+    else {
+        printf("Error: Unknown compute type\n");
+    }
 
-    printf("OK\n");
+    printf("Completed\n");
 
     release_matrix(A);
 
