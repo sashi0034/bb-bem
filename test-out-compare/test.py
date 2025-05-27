@@ -18,6 +18,9 @@ vec1 = data1[:min_len]
 vec2 = data2[:min_len]
 
 # コサイン類似度の計算
-cos_sim = np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+# cos_sim = np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+# print(f"Cosine Similarity: {cos_sim}")
 
-print(f"Cosine Similarity: {cos_sim}")
+# 相対距離の計算
+relative_diff = np.linalg.norm(vec1 - vec2) / np.linalg.norm(vec1)
+print(f"Relative Difference: {relative_diff}")
