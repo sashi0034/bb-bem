@@ -23,31 +23,48 @@ int main(int argc, char* argv[]) {
 
     bb_compute_t compute_mode = BB_COMPUTE_NAIVE; // Default compute mode
 
-    char* filename;
+    char* input_file;
+    char* output_file = "output.txt"; // Default output file
     if (argc > 1) {
-        filename = argv[1];
-
-        if (argc > 2) {
-            if (strcmp(argv[2], "naive") == 0) {
-                compute_mode = BB_COMPUTE_NAIVE;
-            } else if (strcmp(argv[2], "cuda") == 0) {
-                compute_mode = BB_COMPUTE_CUDA;
-            } else if (strcmp(argv[2], "cuda_wmma") == 0) {
-                compute_mode = BB_COMPUTE_CUDA_WMMA;
-            } else {
-                printf("Unknown compute mode: %s\n", argv[2]);
-                return 1;
-            }
-        }
+        input_file = argv[1];
     } else {
-        printf("Usage: %s <input_file> [compute_mode]\n", argv[0]);
+        printf("Usage: %s <input_file> [-m mode] [-o output_file]\n", argv[0]);
         return 1;
     }
 
-    bb_bem(filename, compute_mode, &result);
+    for (int i = 2; i < argc; i++) {
+        if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+            output_file = argv[++i];
+        } else if (strcmp(argv[i], "-m") == 0 && i + 1 < argc) {
+            ++i;
+            if (strcmp(argv[i], "naive") == 0) {
+                compute_mode = BB_COMPUTE_NAIVE;
+            } else if (strcmp(argv[i], "cuda") == 0) {
+                compute_mode = BB_COMPUTE_CUDA;
+            } else if (strcmp(argv[i], "cuda_wmma") == 0) {
+                compute_mode = BB_COMPUTE_CUDA_WMMA;
+            } else {
+                printf("Unknown compute mode: %s\n", argv[i]);
+                return 1;
+            }
+        } else {
+            printf("Unknown argument: %s\n", argv[i]);
+            return 1;
+        }
+    }
+
+    printf("Beginning BEM processing for file: %s\n", input_file);
+    fflush(stdout);
+
+    bb_bem(input_file, compute_mode, &result);
 
     // ----------------------------------------------- fp
-    FILE* fp = fopen("out2.data", "w");
+    FILE* fp = fopen(output_file, "w");
+    if (!fp) {
+        printf("Failed to open output file %s\n", output_file);
+        return 1;
+    }
+
     for (int n = 0; n < result.input.para_batch; n++) {
         for (int i = 0; i < result.dim; i++) {
             fprintf(fp, "%20.14e \n", result.sol[i][n]);
@@ -364,6 +381,7 @@ bb_status_t bb_bem(const char* filename, bb_compute_t /* in */ compute, bb_resul
     }
 
     printf("Linear system was generated.\n");
+    fflush(stdout);
 
     const clock_t compute_start = clock(); // <-- Start time measurement
 
