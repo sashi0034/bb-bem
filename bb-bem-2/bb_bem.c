@@ -6,6 +6,10 @@
 #include <stdlib.h>
 #include <math.h>
 #include <stdint.h>
+#include <time.h>
+#include <string.h>
+
+#include "stl_loader.h"
 
 #include "bb_bem.h"
 
@@ -14,9 +18,33 @@
 #include "bicgstab_cuda_wmma.h"
 
 #if !defined(BB_NO_MAIN)
-int main() {
+int main(int argc, char* argv[]) {
     bb_result_t result;
-    bb_bem("input.txt", BB_COMPUTE_CUDA_WMMA, &result); // CUDA で実行
+
+    bb_compute_t compute_mode = BB_COMPUTE_NAIVE; // Default compute mode
+
+    char* filename;
+    if (argc > 1) {
+        filename = argv[1];
+
+        if (argc > 2) {
+            if (strcmp(argv[2], "naive") == 0) {
+                compute_mode = BB_COMPUTE_NAIVE;
+            } else if (strcmp(argv[2], "cuda") == 0) {
+                compute_mode = BB_COMPUTE_CUDA;
+            } else if (strcmp(argv[2], "cuda_wmma") == 0) {
+                compute_mode = BB_COMPUTE_CUDA_WMMA;
+            } else {
+                printf("Unknown compute mode: %s\n", argv[2]);
+                return 1;
+            }
+        }
+    } else {
+        printf("Usage: %s <input_file> [compute_mode]\n", argv[0]);
+        return 1;
+    }
+
+    bb_bem(filename, compute_mode, &result);
 
     // ----------------------------------------------- fp
     FILE* fp = fopen("out2.data", "w");
@@ -41,7 +69,7 @@ static void** allocate_matrix(size_t rows, size_t cols, size_t elem_size) {
     void** array = (void**)malloc(sizeof(void*) * rows);
     if (!array) return NULL;
 
-    array[0] = malloc(rows * cols * elem_size);
+    array[0] = malloc(rows * cols * elem_size); // CHECK: Should we use aligned_allocate instead?
     if (!array[0]) {
         free(array);
         return NULL;
@@ -49,6 +77,10 @@ static void** allocate_matrix(size_t rows, size_t cols, size_t elem_size) {
 
     for (size_t i = 1; i < rows; i++) {
         array[i] = (uint8_t*)array[0] + i * cols * elem_size;
+    }
+
+    if (((uintptr_t)&array[0]) % 16 != 0) {
+        printf("ERROR: matrix is not 16-byte aligned! Address: %p\n", (void*)&array[0]);
     }
 
     return array;
@@ -69,7 +101,7 @@ static void transpose_double_matrix(size_t rows, size_t cols, double** mat, doub
 
 // -----------------------------------------------
 
-#define NUMBER_ELEMENT_DOF  1;
+#define NUMBER_ELEMENT_DOF  1
 
 #define TOR 1e-8 // Tolerance for convergence
 
@@ -167,7 +199,7 @@ fail:
     }
 
 bad_alloc:
-    if (!input->np) {
+    if (!success) {
         fclose(fp);
         printf("Error: Out of memory while reading %s\n", filename);
         return BB_ERR_FILE_OPEN;
@@ -177,11 +209,107 @@ bad_alloc:
     return BB_OK;
 }
 
+// -----------------------------------------------
+
+static bool has_stl_extension(const char* filename) {
+    const char* dot = strrchr(filename, '.');
+    return dot != NULL && strcmp(dot, ".stl") == 0;
+}
+
+static bb_status_t read_input_from_stl(const char* filename, bb_input_t* input) {
+    stl_model_t model;
+    if (!load_stl_ascii(filename, &model)) {
+        printf("Error: Cannot open file %s\n", filename);
+        return BB_ERR_FILE_OPEN;
+    }
+
+    int success = 0;
+
+    // Read the number of nodes from an input data file: nond
+
+    input->nond = model.num_facets * 3;
+
+    // Allocation for the array for the coordinates of the nodes 
+    input->np = (vector3_t*)malloc(sizeof(vector3_t) * input->nond);
+    if (!input->np) goto bad_alloc;
+
+    // Read the coordinates of the nodes from an input data file: np  
+    for (int i = 0; i < model.num_facets; i++) {
+        for (int j = 0; j < 3; j++) {
+            input->np[i * 3 + j].x = model.facets[i].v[j].x;
+            input->np[i * 3 + j].y = model.facets[i].v[j].y;
+            input->np[i * 3 + j].z = model.facets[i].v[j].z;
+        }
+    }
+
+    // Set value: nofc
+    input->nofc = model.num_facets;
+
+    // Set value: nond_on_face  
+    input->nond_on_face = 3;
+
+    // Set value: nint_para_fc
+    input->nint_para_fc = 0;
+
+    // Set value: ndble_para_fc
+    input->ndble_para_fc = 0;
+
+    // Set value: para_batch
+    input->para_batch = 16;
+
+    printf("Number of nodes=%d Number of faces=%d\n", input->nond, input->nofc);
+
+    // -----------------------------------------------
+
+    // face2node
+    input->face2node = (int**)allocate_matrix(input->nofc, input->nond_on_face, sizeof(int));
+    if (!input->face2node) goto bad_alloc;
+
+    for (int i = 0; i < input->nofc; i++) {
+        for (int j = 0; j < input->nond_on_face; j++) {
+            input->face2node[i][j] = i * 3 + j;
+        }
+    }
+
+    // int_para_fc
+    // no
+
+    // dble_para_fc
+    // no
+
+    success = 1;
+
+    // fail:
+    //     if (!success) {
+    //         free_stl_model(&model);
+    //         printf("Error: Invalid file format %s\n", filename);
+    //         return BB_ERR_FILE_FORMAT;
+    //     }
+
+bad_alloc:
+    if (!success) {
+        free_stl_model(&model);
+        printf("Error: Out of memory while reading %s\n", filename);
+        return BB_ERR_FILE_OPEN;
+    }
+
+    free_stl_model(&model);
+    return BB_OK;
+}
+
+// -----------------------------------------------
+
 bb_status_t bb_bem(const char* filename, bb_compute_t /* in */ compute, bb_result_t* result) {
     bb_input_t* input = &result->input;
     *input = (bb_input_t){0}; // Initialize input structure
 
-    const bb_status_t input_status = read_input_from_file(filename, input);
+    bb_status_t input_status;
+    if (has_stl_extension(filename)) {
+        input_status = read_input_from_stl(filename, input);
+    } else {
+        input_status = read_input_from_file(filename, input);
+    }
+
     if (input_status != BB_OK) {
         return input_status;
     }
@@ -190,8 +318,12 @@ bb_status_t bb_bem(const char* filename, bb_compute_t /* in */ compute, bb_resul
 
     result->dim = input->nofc * NUMBER_ELEMENT_DOF;
 
+    printf("Matrix size: %dx%d\n", result->dim, result->dim);
+
     double** A = (double**)allocate_matrix(result->dim, result->dim, sizeof(double));
     if (!A) return BB_ERR_MEMORY_ALLOC;
+
+    printf("RHS vector size: %dx%d\n", result->dim, input->para_batch);
 
     double** rhs = (double**)allocate_matrix(result->dim, input->para_batch, sizeof(double));
     if (!rhs) return BB_ERR_MEMORY_ALLOC;
@@ -206,34 +338,57 @@ bb_status_t bb_bem(const char* filename, bb_compute_t /* in */ compute, bb_resul
     }
 
     // User Specified Function 
-    // element_integral(coordinate np, double **a, ); 
+    // element_integral(coordinate np, double **a, );
+
+    bb_props_t props;
+    props.nofc = input->nofc;
+    props.nond = input->nond;
+    props.nond_on_face = input->nond_on_face;
+    props.para_batch = input->para_batch;
+    props.np = &input->np[0];
+    props.face2node = &input->face2node[0][0];
 
     for (int i = 0; i < result->dim; i++) {
         for (int j = 0; j < result->dim; j++) {
-            A[i][j] = element_ij_(&i, &j, &input->nond, &input->nofc, &input->np[0], &input->face2node[0][0]);
+            A[i][j] = element_ij_(&i, &j, &props);
         }
     }
 
     for (int i = 0; i < result->dim; i++) {
         for (int n = 0; n < input->para_batch; n++) {
-            rhs[i][n] = input->dble_para_fc[n][i][0]; // TODO
+            const int* int_para_fc = input->int_para_fc ? &input->int_para_fc[n][0][0] : NULL;
+            const double* dble_para_fc = input->dble_para_fc ? &input->dble_para_fc[n][0][0] : NULL;
+            rhs[i][n] =
+                rhs_vector_i_(&i, &n, &input->nint_para_fc, int_para_fc, &input->ndble_para_fc, dble_para_fc, &props);
         }
     }
 
     printf("Linear system was generated.\n");
 
+    const clock_t compute_start = clock(); // <-- Start time measurement
+
+#if 0
+    // pass the rhs vector through the solution (for debugging)
+    {
+        for (int i = 0; i < result->dim; i++) {
+            for (int n = 0; n < input->para_batch; n++) {
+                result->sol[i][n] = rhs[i][n];
+            }
+        }
+    }
+#else
     if (compute == BB_COMPUTE_NAIVE) {
         bicgstab_naive(input->para_batch, result->dim, A, rhs, result->sol, TOR, MAX_STEPS);
-    }
-    else if (compute == BB_COMPUTE_CUDA) {
+    } else if (compute == BB_COMPUTE_CUDA) {
         bicgstab_cuda(input->para_batch, result->dim, A, rhs, result->sol, TOR, MAX_STEPS);
-    }
-    else if (compute == BB_COMPUTE_CUDA_WMMA) {
+    } else if (compute == BB_COMPUTE_CUDA_WMMA) {
         bicgstab_cuda_wmma(input->para_batch, result->dim, A, rhs, result->sol, TOR, MAX_STEPS);
-    }
-    else {
+    } else {
         printf("Error: Unknown compute type\n");
     }
+#endif
+
+    result->compute_time = (double)(clock() - compute_start) / CLOCKS_PER_SEC; // <-- End time measurement
 
     printf("Completed\n");
 
@@ -246,10 +401,13 @@ bb_status_t bb_bem(const char* filename, bb_compute_t /* in */ compute, bb_resul
 
 void release_bb_result(bb_result_t* result) {
     if (!result) return;
+    // -----------------------------------------------
 
     bb_input_t* input = &result->input;
+    if (!input) return;
+    // -----------------------------------------------
 
-    free(input->np);
+    if (input->np) free(input->np);
 
     if (input->face2node) {
         release_matrix(input->face2node);
@@ -267,7 +425,7 @@ void release_bb_result(bb_result_t* result) {
         free(input->dble_para_fc);
     }
 
-    release_matrix(result->sol);
+    if (result->sol) release_matrix(result->sol);
 
     input->np = NULL;
     input->face2node = NULL;

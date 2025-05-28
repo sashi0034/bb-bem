@@ -101,22 +101,26 @@ static double face_integral(const double xs[3],
     return fabs(sum) / (4.0 * PI * EPSILON_0);
 }
 
-/*
- * C-callable wrapper matching the Fortran interface:
- *   double element_ij_(int* i, int* j, int* nond, int* nofc,
- *                      coordinate* np, int* face2node);
+/**
+ * element_ij_ - User-defined function to compute the integral
  *
  * Here we assume each face is a triangle (3 nodes per face).
  */
-double element_ij_(int* pi, int* pj, int* pnond, int* pnofc,
-                   vector3_t* np, int* face2node_flat) {
-    int fi = *pi;
-    int fj = *pj;
+double element_ij_(
+    const int* p_i,
+    const int* p_j,
+    const bb_props_t* props
+) {
+    int fi = *p_i;
+    int fj = *p_j;
+
+    int* face2node = props->face2node;
+    vector3_t* np = props->np;
 
     // Coordinates of face fi for centroid 
     double xf_i[3], yf_i[3], zf_i[3];
     for (int k = 0; k < 3; k++) {
-        int node = face2node_flat[fi * 3 + k];
+        int node = face2node[fi * 3 + k];
         xf_i[k] = np[node].x;
         yf_i[k] = np[node].y;
         zf_i[k] = np[node].z;
@@ -129,7 +133,7 @@ double element_ij_(int* pi, int* pj, int* pnond, int* pnofc,
     // Coordinates of face fj 
     double xf_j[3], yf_j[3], zf_j[3];
     for (int k = 0; k < 3; k++) {
-        int node = face2node_flat[fj * 3 + k];
+        int node = face2node[fj * 3 + k];
         xf_j[k] = np[node].x;
         yf_j[k] = np[node].y;
         zf_j[k] = np[node].z;
@@ -137,4 +141,34 @@ double element_ij_(int* pi, int* pj, int* pnond, int* pnofc,
 
     // Compute and return the face integral 
     return face_integral(xf_j, yf_j, zf_j, xp, yp, zp);
+}
+
+double rhs_vector_i_(
+    const int* p_i,
+    const int* p_n,
+    const int* nint_para_fc,
+    const int* int_para_fc, /* [nofc * nint_para_fc] */
+    const int* ndble_para_fc,
+    const double* dble_para_fc, /* [nofc * ndble_para_fc] */
+    const bb_props_t* props
+) {
+    if (*ndble_para_fc == 0) {
+        int fi = *p_i;
+
+        int* face2node = props->face2node;
+        vector3_t* np = props->np;
+
+        // Coordinates of face fi for centroid z
+        double yf_i[3];
+        for (int k = 0; k < 3; k++) {
+            int node = face2node[fi * 3 + k];
+            yf_i[k] = np[node].y;
+        }
+
+        // Centroid of face fi 
+        const double yp = (yf_i[0] + yf_i[1] + yf_i[2]) / 3.0;
+        return yp * (1.0 + *p_n);
+    }
+
+    return dble_para_fc[*p_i * *ndble_para_fc + 0];
 }
