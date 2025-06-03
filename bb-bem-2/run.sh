@@ -6,4 +6,5 @@
 #SBATCH -o out/%x.%j.out # %x: job name, %j: job id
 # -----------------------------------------------
 
-./bb_bem ../input_data/cube_100x100x100.stl -o ../output_data/cube_100x100x100.out -m cuda_wmma
+# ./bb_bem ../input_data/cube_100x100x100.stl -o ../output_data/cube_100x100x100.out -m cuda_wmma
+./bb_bem ../input_data/cube_100x100x100.stl -o ../output_data/cube_100x100x100.out
