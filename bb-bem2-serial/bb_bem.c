@@ -18,7 +18,7 @@
 
 #include "bicgstab_naive.h"
 #include "bicgstab_cuda.h"
-#include "bicgstab_cuda_wmma.h"
+// #include "bicgstab_cuda_wmma.h"
 
 #if !defined(BB_NO_MAIN)
 int main(int argc, char* argv[]) {
