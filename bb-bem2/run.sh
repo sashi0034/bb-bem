@@ -10,4 +10,4 @@
 # ./bb_bem ../input_data/cube_100x100x100.stl -o ../output_data/cube_100x100x100.out
 
 # Simulation 6/3
-./bb_bem ../input_data/torus-sd.stl -o ../output_data/torus-sd.out -m cuda_wmma
+./bb_bem ../input_data/torus-sd.stl -o ../output_data/torus-sd2x.out -m cuda_wmma

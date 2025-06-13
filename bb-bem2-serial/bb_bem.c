@@ -20,6 +20,8 @@
 #include "bicgstab_cuda.h"
 // #include "bicgstab_cuda_wmma.h"
 
+static int s_default_para_batch = 8;
+
 #if !defined(BB_NO_MAIN)
 int main(int argc, char* argv[]) {
     bb_result_t result;
@@ -48,6 +50,9 @@ int main(int argc, char* argv[]) {
                 printf("Unknown compute mode: %s\n", argv[i]);
                 return 1;
             }
+        } else if (strcmp(argv[i], "--batch") == 0 && i + 1 < argc) {
+            ++i;
+            s_default_para_batch = atoi(argv[i]);
         } else {
             printf("Unknown argument: %s\n", argv[i]);
             return 1;
@@ -70,7 +75,7 @@ int main(int argc, char* argv[]) {
 
     for (int n = 0; n < result.input.para_batch; n++) {
         for (int i = 0; i < result.dim; i++) {
-            fprintf(fp, "%20.14e \n", result.sol[i][n]);
+            fprintf(fp, "%20.14e \n", result.sol[n][i]);
         }
     }
 
@@ -315,7 +320,7 @@ static bb_status_t read_input_from_stl(const char* filename, bb_input_t* input) 
     input->ndble_para_fc = 0;
 
     // Set value: para_batch
-    input->para_batch_unaligned = 8;
+    input->para_batch_unaligned = s_default_para_batch;
     input->para_batch = align8(input->para_batch_unaligned);
 
     printf("Number of nodes=%d Number of faces=%d\n", input->nond, input->nofc);
@@ -477,14 +482,14 @@ bb_status_t bb_bem(const char* filename, bb_compute_t /* in */ compute, bb_resul
         }
     }
 #else
-    for (int n = 0; n < input->para_batch_unaligned; ++n) {
-        if (compute == BB_COMPUTE_NAIVE) {
+    if (compute == BB_COMPUTE_NAIVE) {
+        for (int n = 0; n < input->para_batch_unaligned; ++n) {
             bicgstab_naive(result->dim, A, rhs[n], result->sol[n], TOR, MAX_STEPS);
-        } else if (compute == BB_COMPUTE_CUDA) {
-            bicgstab_cuda(result->dim, A, rhs[n], result->sol[n], TOR, MAX_STEPS);
-        } else {
-            printf("Error: Unknown compute type\n");
         }
+    } else if (compute == BB_COMPUTE_CUDA) {
+        serial_bicgstab_cuda(input->para_batch_unaligned, result->dim, A, rhs, result->sol, TOR, MAX_STEPS);
+    } else {
+        printf("Error: Unknown compute type\n");
     }
 #endif
 
