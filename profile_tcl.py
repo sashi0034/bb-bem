@@ -70,7 +70,7 @@ plt.plot(
     list(batch_sizes),
     results["standard"],
     marker="o",
-    label="Standard Layout",
+    label="Standard Memory Layout",
 )
 plt.plot(list(batch_sizes), results["tcl"], marker="s", label="Tensor Cores Layout")
 plt.xlabel("Batch Size")
