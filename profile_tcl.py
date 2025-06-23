@@ -10,8 +10,8 @@ import numpy as np
 # Configuration parameters (easily adjustable)
 input_path = "../input_data/torus-sd3x.stl"
 output_tmp = "../output_data/tmp.out"
-batch_sizes = np.logspace(1, 3, num=20, dtype=int).tolist()  # batch sizes to test
-num_runs = 1  # number of repetitions per batch
+batch_sizes = [i for i in range(100, 1001, 100)]
+num_runs = 3  # number of repetitions per batch
 standard_cmd = "./bb_bem {input} -o {output} -m cuda_wmma --batch {batch}"
 tcl_cmd = "./bb_bem {input} -o {output} -m cuda_wmma --batch {batch}"
 workdirs = {"standard": "bb-bem2", "tcl": "bb-bem2-tcl"}
@@ -75,9 +75,7 @@ plt.plot(
 plt.plot(list(batch_sizes), results["tcl"], marker="s", label="Tensor Cores Layout")
 plt.xlabel("Batch Size")
 plt.ylabel("Compute Time (s)")
-plt.title(
-    "BiCGStab with CUDA and Tensor Cores Performance Comparison: Standard vs Tensor Cores Layout"
-)
+plt.title("BiCGStab with CUDA and Tensor Cores Performance Comparison")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
