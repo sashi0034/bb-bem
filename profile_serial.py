@@ -1,14 +1,16 @@
+import csv
 from datetime import datetime
 import os
 import subprocess
 import re
 import statistics
 import matplotlib.pyplot as plt
+import numpy as np
 
 # Configuration parameters (easily adjustable)
 input_path = "../input_data/torus-sd3x.stl"
 output_tmp = "../output_data/tmp.out"
-batch_sizes = [20, 40, 60]
+batch_sizes = np.logspace(1, 4, num=20, dtype=int).tolist()  # batch sizes to test
 num_runs = 1  # number of repetitions per batch
 parallel_cmd = "./bb_bem {input} -o {output} -m cuda_wmma --batch {batch}"
 serial_cmd = "./bb_bem {input} -o {output} -m cuda --batch {batch}"
@@ -36,7 +38,9 @@ def measure_time(command: str, cwd: str) -> float:
     print("----------------")
     match = time_pattern.search(proc.stdout)
     if not match:
-        raise RuntimeError(f"Compute time not found in output from {command}")
+        # raise RuntimeError(f"Compute time not found in output from {command}")
+        print(f"Warning: Compute time not found in output from {command}")
+        return float("nan")  # Return NaN if time not found
     return float(match.group(1))
 
 
@@ -60,17 +64,18 @@ for batch in batch_sizes:
         )
         results[mode].append(average_time)
 
-
-# Plot results
 # Plot results
 plt.figure()
 plt.plot(
-    list(batch_sizes), results["parallel"], marker="o", label="Parallel (cuda_wmma)"
+    list(batch_sizes),
+    results["parallel"],
+    marker="o",
+    label="Parallel (CUDA and Tensor Cores)",
 )
-plt.plot(list(batch_sizes), results["serial"], marker="s", label="Serial (cuda)")
+plt.plot(list(batch_sizes), results["serial"], marker="s", label="Serial (CUDA)")
 plt.xlabel("Batch Size")
-plt.ylabel("Average Compute Time (s)")
-plt.title("Performance Comparison: Parallel vs Serial Bicgstab")
+plt.ylabel("Compute Time (s)")
+plt.title("BiCGStab Performance Comparison: Parallel vs Serial")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
@@ -83,3 +88,14 @@ output_path = os.path.join(output_dir, f"profile_serial_{timestamp}.png")
 plt.savefig(output_path)
 
 print(f"Plot saved to {output_path}")
+
+csv_output_path = os.path.join(output_dir, f"profile_serial_{timestamp}.csv")
+with open(csv_output_path, mode="w", newline="") as csvfile:
+    writer = csv.writer(csvfile)
+    writer.writerow(["Batch Size", "Parallel Time (s)", "Serial Time (s)"])
+    for batch, par_time, ser_time in zip(
+        batch_sizes, results["parallel"], results["serial"]
+    ):
+        writer.writerow([batch, par_time, ser_time])
+
+print(f"CSV saved to {csv_output_path}")
