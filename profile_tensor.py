@@ -15,7 +15,7 @@ import numpy as np  # kept for parity with the original script
 # I/O and experiment setup
 INPUT_PATH = "../input_data/torus-sd3x.stl"
 OUTPUT_TMP = "../output_data/tmp.out"
-BATCH_SIZES = [100] # [i for i in range(100, 1001, 100)]
+BATCH_SIZES = [i for i in range(100, 1001, 100)]
 NUM_RUNS = 1  # number of repetitions per batch
 
 # Modes and their order (affects CSV column order and plotting order)
@@ -69,6 +69,19 @@ FILE_PREFIX = "profile_tensor_"  # keep this to preserve exact filenames
 # =========================
 results = {mode: [] for mode in MODES}
 
+# =========================
+# Optional sanity checks (no change in outputs; fails fast if misconfigured)
+# =========================
+for m in MODES:
+    if not (
+        m in WORKDIRS
+        and m in CMD_TEMPLATES
+        and m in PLOT_LABELS
+        and m in PLOT_MARKERS
+        and m in CSV_HEADERS
+    ):
+        raise KeyError(f"Missing config for mode '{m}'")
+
 
 # =========================
 # Core functions
@@ -118,21 +131,16 @@ for batch in BATCH_SIZES:
         results[mode].append(average_time)
 
 # =========================
-# Plot (identical aesthetics and labels)
+# Plot (identical aesthetics and labels; order follows MODES)
 # =========================
 plt.figure()
-plt.plot(
-    list(BATCH_SIZES),
-    results["standard"],
-    marker=PLOT_MARKERS["standard"],
-    label=PLOT_LABELS["standard"],
-)
-plt.plot(
-    list(BATCH_SIZES),
-    results["tcl"],
-    marker=PLOT_MARKERS["tcl"],
-    label=PLOT_LABELS["tcl"],
-)
+for mode in MODES:
+    plt.plot(
+        list(BATCH_SIZES),
+        results[mode],
+        marker=PLOT_MARKERS[mode],
+        label=PLOT_LABELS[mode],
+    )
 plt.xlabel(XLABEL)
 plt.ylabel(YLABEL)
 plt.title(PLOT_TITLE)
