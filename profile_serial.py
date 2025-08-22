@@ -10,7 +10,7 @@ import numpy as np
 # Configuration parameters (easily adjustable)
 input_path = "../input_data/torus-sd3x.stl"
 output_tmp = "../output_data/tmp.out"
-batch_sizes = np.logspace(1, 4, num=20, dtype=int).tolist()  # batch sizes to test
+batch_sizes = [i for i in range(100, 1001, 100)]  # batch sizes to test
 num_runs = 1  # number of repetitions per batch
 parallel_cmd = "./bb_bem {input} -o {output} -m cuda_wmma --batch {batch}"
 serial_cmd = "./bb_bem {input} -o {output} -m cuda --batch {batch}"
