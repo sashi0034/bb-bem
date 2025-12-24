@@ -10,11 +10,11 @@ import numpy as np
 # Configuration parameters (easily adjustable)
 input_path = "../input_data/torus-sd3x.stl"
 output_tmp = "../output_data/tmp.out"
-batch_sizes = [1000]
-num_runs = 1  # number of repetitions per batch
+batch_sizes = [i for i in range(100, 1001, 100)]
+num_runs = 3  # number of repetitions per batch
 cublas_cmd = "./bb_bem {input} -o {output} -m cuda_cublas --batch {batch}"
 tcl_cmd = "./bb_bem {input} -o {output} -m cuda_wmma --batch {batch}"
-workdirs = {"cublas": "bb-bem2", "tcl": "bb-bem2-fast-tcl"}
+workdirs = {"cublas": "bb-bem2", "tcl": "bb-bem2"}
 
 # Regular expression to extract compute time
 time_pattern = re.compile(r"Compute time:\s*([\d.]+)")
